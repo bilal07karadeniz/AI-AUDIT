@@ -71,7 +71,25 @@ AI-AUDIT/
 - **npm** or **yarn**
 - **Anthropic API key** ([Get one here](https://console.anthropic.com/))
 
-### Installation
+### Automated Setup (Recommended)
+
+Use the setup script for automatic installation:
+
+```bash
+git clone <repository-url>
+cd AI-AUDIT
+chmod +x setup.sh
+./setup.sh
+```
+
+The script will:
+- ✅ Check prerequisites
+- ✅ Install all dependencies (frontend & backend)
+- ✅ Create environment files
+- ✅ Optionally save your API key
+- ✅ Show next steps
+
+### Manual Setup
 
 1. **Clone the repository**
 ```bash
@@ -100,7 +118,7 @@ Edit `server/.env` and add your Anthropic API key:
 ANTHROPIC_API_KEY=sk-ant-your-api-key-here
 PORT=3001
 NODE_ENV=development
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:4174
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:4173
 ```
 
 5. **Configure the frontend (optional)**
@@ -132,6 +150,8 @@ Then open your browser to:
 ```
 http://localhost:5173
 ```
+
+**Backend Status**: Look for the green "Backend Online" indicator in the top navigation
 
 ## 📖 Usage Guide
 
@@ -311,20 +331,48 @@ POST /api/claude/messages
 }
 ```
 
+## 🆕 Latest Improvements
+
+### Error Handling & Monitoring ✅
+
+- **Comprehensive Error Utilities** - Smart error categorization and user-friendly messages
+- **Error Boundaries** - Graceful error recovery with detailed debugging
+- **Backend Status Monitor** - Real-time backend health checking
+- **Retry Logic** - Automatic retry with exponential backoff
+- **Input Validation** - Comprehensive validation utilities
+
+### Storage Management ✅
+
+- **Smart Quota Management** - Automatic cleanup when approaching limits
+- **Data Validation** - All cached data validated on load
+- **Hit Rate Tracking** - Cache performance monitoring
+- **Corrupted Data Recovery** - Automatic detection and cleanup
+
+### Developer Experience ✅
+
+- **Automated Setup Script** - One-command installation
+- **Comprehensive Testing Guide** - Step-by-step testing instructions
+- **Better Error Messages** - Clear, actionable error descriptions
+- **Development Tools** - Error logging and debugging utilities
+
 ## 🐛 Known Issues & Fixes
 
-For detailed bug reports and fixes, see:
-- **[BUG_REPORT.md](./BUG_REPORT.md)** - Comprehensive bug documentation
-- **[CODEBASE_ANALYSIS.md](./CODEBASE_ANALYSIS.md)** - Architecture and security analysis
+For detailed documentation:
+- **[BUG_REPORT.md](./BUG_REPORT.md)** - Original bugs and fixes
+- **[FIXES_SUMMARY.md](./FIXES_SUMMARY.md)** - Comprehensive fix documentation
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Complete testing guide
+- **[CODEBASE_ANALYSIS.md](./CODEBASE_ANALYSIS.md)** - Architecture analysis
 
-### Recently Fixed Issues ✅
+### All Critical Issues Fixed ✅
 
-1. ✅ Missing state variables in `AuditResults.tsx`
-2. ✅ Broken `FixVerificationEngine.submitFix()` method
-3. ✅ No backend API server (created Express server)
-4. ✅ API key exposure (moved to backend)
-5. ✅ localStorage quota management
-6. ✅ Input validation for cached data
+1. ✅ Backend API server created (Express + Claude integration)
+2. ✅ Component state management fixed
+3. ✅ API key security (moved to backend)
+4. ✅ localStorage quota management
+5. ✅ Input validation for all data
+6. ✅ Error handling system
+7. ✅ Backend health monitoring
+8. ✅ Comprehensive error boundaries
 
 ## 🔐 Security Considerations
 
@@ -384,17 +432,70 @@ MIT License - see [LICENSE](LICENSE) file for details
 - **Vite Team** - For the blazing fast build tool
 - **Tailwind CSS** - For the utility-first CSS framework
 
+## 🧪 Testing
+
+Complete testing guide available in [TESTING_GUIDE.md](./TESTING_GUIDE.md)
+
+### Quick Test
+
+```bash
+# Automated setup
+./setup.sh
+
+# Backend (terminal 1)
+npm run server:dev
+
+# Frontend (terminal 2)
+npm run dev
+
+# Open http://localhost:5173
+# Look for green "Backend Online" indicator
+```
+
+### Testing Checklist
+
+- [ ] Backend starts without errors
+- [ ] Frontend loads successfully
+- [ ] Backend status shows "Online" (green)
+- [ ] Can upload and analyze contract
+- [ ] Error handling works (try stopping backend)
+- [ ] Reports generate correctly
+
+See [TESTING_GUIDE.md](./TESTING_GUIDE.md) for comprehensive testing instructions.
+
 ## 📞 Support
 
 For issues, questions, or contributions:
-- Open an issue on GitHub
-- Check existing documentation in `/docs`
-- Review the [BUG_REPORT.md](./BUG_REPORT.md) for known issues
+- **Setup Issues**: Check [TESTING_GUIDE.md](./TESTING_GUIDE.md#troubleshooting)
+- **Bugs**: Review [BUG_REPORT.md](./BUG_REPORT.md) and [FIXES_SUMMARY.md](./FIXES_SUMMARY.md)
+- **Architecture**: See [CODEBASE_ANALYSIS.md](./CODEBASE_ANALYSIS.md)
+- **GitHub Issues**: Open an issue for new problems
+
+### Quick Troubleshooting
+
+**Backend won't start?**
+```bash
+cd server
+cat .env  # Check API key is set
+npm install  # Reinstall dependencies
+```
+
+**Frontend can't connect?**
+- Check backend is running on port 3001
+- Look for "Backend Online" indicator
+- Check browser console for errors
+
+**Analysis fails?**
+- Verify API key in `server/.env`
+- Check backend logs for errors
+- Ensure contract has valid Solidity syntax
 
 ---
 
 <div align="center">
 
 **Built with ❤️ for the Ethereum community**
+
+[Setup Guide](./README.md#-quick-start) • [Testing Guide](./TESTING_GUIDE.md) • [Bug Reports](./FIXES_SUMMARY.md)
 
 </div>
