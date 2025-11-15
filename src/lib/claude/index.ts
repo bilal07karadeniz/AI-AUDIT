@@ -7,6 +7,7 @@ import type {
   AnalysisProgress
 } from '../../types';
 import { DeterministicHasher } from '../hash';
+import { API_CONFIG } from '../../config/api';
 
 export class ClaudeAPI {
   private apiKey: string;
@@ -148,17 +149,16 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
   private async makeAPICall(prompt: string, config: ClaudeAPIConfig, retries = 3): Promise<any> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const response = await fetch('/api/claude/messages', {
+        const response = await fetch(API_CONFIG.getEndpoint('claude'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': this.apiKey,
-            'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
             model: config.model,
             max_tokens: config.max_tokens,
             temperature: config.temperature,
+            seed: config.seed,
             messages: [
               {
                 role: 'user',
@@ -247,12 +247,10 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
 
   public async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch('/api/claude/messages', {
+      const response = await fetch(API_CONFIG.getEndpoint('claude'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
           model: 'claude-opus-4-1-20250805',

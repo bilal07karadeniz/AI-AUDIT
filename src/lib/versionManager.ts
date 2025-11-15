@@ -3,21 +3,110 @@ import type { ContractVersion, FixSubmission, ContractAudit, FixVerificationProg
 export class VersionManager {
   private static readonly STORAGE_KEY = 'ai_audit_versions';
   private static readonly ACTIVE_FIX_KEY = 'ai_audit_active_fix';
+  private static readonly MAX_STORAGE_SIZE = 4 * 1024 * 1024; // 4MB conservative limit
+
+  /**
+   * Check if localStorage has enough space
+   */
+  private static checkStorageQuota(dataSize: number): boolean {
+    try {
+      const currentSize = this.getStorageSize();
+      return (currentSize + dataSize) < this.MAX_STORAGE_SIZE;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get current localStorage usage
+   */
+  private static getStorageSize(): number {
+    let total = 0;
+    for (let key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        total += localStorage[key].length + key.length;
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Clean up old versions to free space
+   */
+  private static cleanupOldVersions(keepCount: number = 5): void {
+    try {
+      const versions = this.loadVersions();
+      if (versions.length > keepCount) {
+        const recentVersions = versions.slice(-keepCount);
+        this.saveVersions(recentVersions);
+        console.log(`Cleaned up ${versions.length - keepCount} old versions`);
+      }
+    } catch (error) {
+      console.error('Failed to cleanup old versions:', error);
+    }
+  }
 
   static saveVersions(versions: ContractVersion[]): void {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(versions));
+      const data = JSON.stringify(versions);
+      const dataSize = data.length;
+
+      // Check if we have space
+      if (!this.checkStorageQuota(dataSize)) {
+        console.warn('localStorage quota approaching, cleaning up old versions');
+        this.cleanupOldVersions(3);
+
+        // Try again after cleanup
+        if (!this.checkStorageQuota(dataSize)) {
+          throw new Error('localStorage quota exceeded. Please clear old data.');
+        }
+      }
+
+      localStorage.setItem(this.STORAGE_KEY, data);
     } catch (error) {
       console.error('Failed to save versions to localStorage:', error);
+
+      // If quota exceeded, try cleanup and retry once
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.warn('Quota exceeded, attempting cleanup...');
+        this.cleanupOldVersions(2);
+        try {
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(versions));
+        } catch (retryError) {
+          throw new Error('localStorage quota exceeded. Please clear browser data and try again.');
+        }
+      }
+      throw error;
     }
   }
 
   static loadVersions(): ContractVersion[] {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+
+      const parsed = JSON.parse(stored);
+
+      // Validate the data structure
+      if (!Array.isArray(parsed)) {
+        console.error('Invalid versions data structure, resetting');
+        return [];
+      }
+
+      // Validate each version object
+      return parsed.filter((version: any) => {
+        return version &&
+               typeof version.version === 'string' &&
+               typeof version.code === 'string' &&
+               version.audit &&
+               typeof version.submissionDate === 'string';
+      });
     } catch (error) {
       console.error('Failed to load versions from localStorage:', error);
+      // If corrupted, clear it
+      try {
+        localStorage.removeItem(this.STORAGE_KEY);
+      } catch {}
       return [];
     }
   }
@@ -37,9 +126,31 @@ export class VersionManager {
   static loadActiveFixSubmission(): FixSubmission | null {
     try {
       const stored = localStorage.getItem(this.ACTIVE_FIX_KEY);
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+
+      const parsed = JSON.parse(stored);
+
+      // Validate the data structure
+      if (!parsed || typeof parsed !== 'object') {
+        console.error('Invalid fix submission data structure');
+        localStorage.removeItem(this.ACTIVE_FIX_KEY);
+        return null;
+      }
+
+      // Basic validation
+      if (!parsed.id || !parsed.version || !parsed.fixedCode) {
+        console.error('Invalid fix submission data, missing required fields');
+        localStorage.removeItem(this.ACTIVE_FIX_KEY);
+        return null;
+      }
+
+      return parsed;
     } catch (error) {
       console.error('Failed to load active fix submission:', error);
+      // If corrupted, clear it
+      try {
+        localStorage.removeItem(this.ACTIVE_FIX_KEY);
+      } catch {}
       return null;
     }
   }
