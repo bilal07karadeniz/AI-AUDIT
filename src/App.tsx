@@ -3,10 +3,13 @@ import { Layout } from './components/layout';
 import { CodeUpload, ProgressTracker, AuditResults } from './components/audit';
 import { MetricsCards, TrendCharts, IssuePatterns, InsightsPanel, ComparisonTable } from './components/analytics';
 import { Button, Card, CardContent } from './components/ui';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { BackendStatus } from './components/common/BackendStatus';
 import { AuditEngine } from './lib/audit';
 import { AnalyticsEngine } from './lib/analytics';
 import { formatDate } from './lib/utils';
 import { ReportGenerator } from './lib/reports';
+import { ErrorHandler } from './lib/utils/errors';
 import { FileText, Code, Globe } from 'lucide-react';
 import type {
   ContractAudit,
@@ -451,9 +454,11 @@ function App() {
   };
 
   return (
-    <Layout currentTab={currentTab} onTabChange={setCurrentTab}>
-      {renderContent()}
-    </Layout>
+    <ErrorBoundary>
+      <Layout currentTab={currentTab} onTabChange={setCurrentTab}>
+        {renderContent()}
+      </Layout>
+    </ErrorBoundary>
   );
 }
 

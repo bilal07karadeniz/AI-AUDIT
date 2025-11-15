@@ -4,6 +4,10 @@ export class AuditCache {
   private cache: Map<string, CacheEntry> = new Map();
   private maxSize: number;
   private ttl: number; // Time to live in milliseconds
+  private hits: number = 0;
+  private misses: number = 0;
+  private readonly STORAGE_KEY = 'audit-cache';
+  private readonly MAX_STORAGE_SIZE = 2 * 1024 * 1024; // 2MB for cache
 
   constructor(maxSize: number = 100, ttlHours: number = 24) {
     this.maxSize = maxSize;
@@ -15,6 +19,7 @@ export class AuditCache {
     const entry = this.cache.get(contractHash);
 
     if (!entry) {
+      this.misses++;
       return null;
     }
 
@@ -22,9 +27,11 @@ export class AuditCache {
     if (Date.now() > new Date(entry.expiresAt).getTime()) {
       this.cache.delete(contractHash);
       this.saveToStorage();
+      this.misses++;
       return null;
     }
 
+    this.hits++;
     return entry.result;
   }
 
@@ -100,32 +107,115 @@ export class AuditCache {
   }
 
   private calculateHitRate(): number {
-    // This would need to be implemented with actual hit/miss tracking
-    // For now, return a placeholder
-    return 0;
+    const total = this.hits + this.misses;
+    if (total === 0) return 0;
+    return Math.round((this.hits / total) * 100);
+  }
+
+  /**
+   * Reset hit/miss statistics
+   */
+  public resetStats(): void {
+    this.hits = 0;
+    this.misses = 0;
+  }
+
+  /**
+   * Check storage quota before saving
+   */
+  private checkStorageQuota(dataSize: number): boolean {
+    try {
+      let currentSize = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+          currentSize += localStorage[key].length + key.length;
+        }
+      }
+      return (currentSize + dataSize) < this.MAX_STORAGE_SIZE;
+    } catch {
+      return false;
+    }
   }
 
   private saveToStorage(): void {
     try {
       const entries = Array.from(this.cache.entries());
-      localStorage.setItem('audit-cache', JSON.stringify(entries));
+      const data = JSON.stringify(entries);
+      const dataSize = data.length;
+
+      // Check quota before saving
+      if (!this.checkStorageQuota(dataSize)) {
+        console.warn('Cache storage quota approaching, reducing cache size');
+        // Remove oldest entries until we can save
+        while (this.cache.size > Math.floor(this.maxSize / 2)) {
+          this.removeOldestEntry();
+        }
+        const reducedData = JSON.stringify(Array.from(this.cache.entries()));
+
+        if (!this.checkStorageQuota(reducedData.length)) {
+          console.error('Unable to save cache: quota exceeded even after cleanup');
+          return;
+        }
+
+        localStorage.setItem(this.STORAGE_KEY, reducedData);
+        return;
+      }
+
+      localStorage.setItem(this.STORAGE_KEY, data);
     } catch (error) {
-      console.warn('Failed to save cache to localStorage:', error);
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.error('localStorage quota exceeded for cache');
+        // Try to save with reduced size
+        this.cache.clear();
+        try {
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
+        } catch {
+          console.error('Failed to clear cache storage');
+        }
+      } else {
+        console.warn('Failed to save cache to localStorage:', error);
+      }
     }
   }
 
   private loadFromStorage(): void {
     try {
-      const stored = localStorage.getItem('audit-cache');
-      if (stored) {
-        const entries: [string, CacheEntry][] = JSON.parse(stored);
-        this.cache = new Map(entries);
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (!stored) return;
 
-        // Clean up expired entries
-        this.cleanupExpiredEntries();
+      const parsed = JSON.parse(stored);
+
+      // Validate data structure
+      if (!Array.isArray(parsed)) {
+        console.error('Invalid cache data structure, clearing cache');
+        localStorage.removeItem(this.STORAGE_KEY);
+        return;
       }
+
+      // Validate and filter entries
+      const validEntries = parsed.filter((entry: any) => {
+        if (!Array.isArray(entry) || entry.length !== 2) return false;
+        const [key, value] = entry;
+        return typeof key === 'string' &&
+               value &&
+               typeof value === 'object' &&
+               value.contractHash &&
+               value.result &&
+               value.timestamp &&
+               value.expiresAt;
+      });
+
+      this.cache = new Map(validEntries as [string, CacheEntry][]);
+
+      // Clean up expired entries
+      this.cleanupExpiredEntries();
     } catch (error) {
-      console.warn('Failed to load cache from localStorage:', error);
+      console.error('Failed to load cache from localStorage:', error);
+      // Clear corrupted cache
+      try {
+        localStorage.removeItem(this.STORAGE_KEY);
+      } catch {}
+      this.cache.clear();
     }
   }
 
