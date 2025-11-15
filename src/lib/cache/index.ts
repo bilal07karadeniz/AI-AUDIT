@@ -1,4 +1,5 @@
 import type { ContractAudit, CacheEntry } from '../../types';
+import { logger } from '../utils/logger';
 
 export class AuditCache {
   private cache: Map<string, CacheEntry> = new Map();
@@ -145,7 +146,11 @@ export class AuditCache {
 
       // Check quota before saving
       if (!this.checkStorageQuota(dataSize)) {
-        console.warn('Cache storage quota approaching, reducing cache size');
+        logger.warn('Cache storage quota approaching, reducing cache size', 'AuditCache', {
+          dataSize,
+          cacheSize: this.cache.size,
+          maxSize: this.maxSize
+        });
         // Remove oldest entries until we can save
         while (this.cache.size > Math.floor(this.maxSize / 2)) {
           this.removeOldestEntry();
@@ -153,7 +158,9 @@ export class AuditCache {
         const reducedData = JSON.stringify(Array.from(this.cache.entries()));
 
         if (!this.checkStorageQuota(reducedData.length)) {
-          console.error('Unable to save cache: quota exceeded even after cleanup');
+          logger.error('Unable to save cache: quota exceeded even after cleanup', undefined, 'AuditCache', {
+            reducedDataSize: reducedData.length
+          });
           return;
         }
 
@@ -164,16 +171,16 @@ export class AuditCache {
       localStorage.setItem(this.STORAGE_KEY, data);
     } catch (error) {
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.error('localStorage quota exceeded for cache');
+        logger.error('localStorage quota exceeded for cache', error, 'AuditCache');
         // Try to save with reduced size
         this.cache.clear();
         try {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
-        } catch {
-          console.error('Failed to clear cache storage');
+        } catch (clearError) {
+          logger.error('Failed to clear cache storage', clearError as Error, 'AuditCache');
         }
       } else {
-        console.warn('Failed to save cache to localStorage:', error);
+        logger.warn('Failed to save cache to localStorage', 'AuditCache', { error });
       }
     }
   }
@@ -187,7 +194,7 @@ export class AuditCache {
 
       // Validate data structure
       if (!Array.isArray(parsed)) {
-        console.error('Invalid cache data structure, clearing cache');
+        logger.error('Invalid cache data structure, clearing cache', undefined, 'AuditCache');
         localStorage.removeItem(this.STORAGE_KEY);
         return;
       }
@@ -210,7 +217,7 @@ export class AuditCache {
       // Clean up expired entries
       this.cleanupExpiredEntries();
     } catch (error) {
-      console.error('Failed to load cache from localStorage:', error);
+      logger.error('Failed to load cache from localStorage', error as Error, 'AuditCache');
       // Clear corrupted cache
       try {
         localStorage.removeItem(this.STORAGE_KEY);

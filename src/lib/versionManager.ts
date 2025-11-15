@@ -1,4 +1,5 @@
 import type { ContractVersion, FixSubmission, ContractAudit, FixVerificationProgress } from '../types';
+import { logger } from './utils/logger';
 
 export class VersionManager {
   private static readonly STORAGE_KEY = 'ai_audit_versions';
@@ -39,10 +40,13 @@ export class VersionManager {
       if (versions.length > keepCount) {
         const recentVersions = versions.slice(-keepCount);
         this.saveVersions(recentVersions);
-        console.log(`Cleaned up ${versions.length - keepCount} old versions`);
+        logger.info(`Cleaned up ${versions.length - keepCount} old versions`, 'VersionManager', {
+          removed: versions.length - keepCount,
+          kept: keepCount
+        });
       }
     } catch (error) {
-      console.error('Failed to cleanup old versions:', error);
+      logger.error('Failed to cleanup old versions', error as Error, 'VersionManager');
     }
   }
 
@@ -53,7 +57,10 @@ export class VersionManager {
 
       // Check if we have space
       if (!this.checkStorageQuota(dataSize)) {
-        console.warn('localStorage quota approaching, cleaning up old versions');
+        logger.warn('localStorage quota approaching, cleaning up old versions', 'VersionManager', {
+          dataSize,
+          storageSize: this.getStorageSize()
+        });
         this.cleanupOldVersions(3);
 
         // Try again after cleanup
@@ -64,11 +71,11 @@ export class VersionManager {
 
       localStorage.setItem(this.STORAGE_KEY, data);
     } catch (error) {
-      console.error('Failed to save versions to localStorage:', error);
+      logger.error('Failed to save versions to localStorage', error as Error, 'VersionManager');
 
       // If quota exceeded, try cleanup and retry once
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Quota exceeded, attempting cleanup...');
+        logger.warn('Quota exceeded, attempting cleanup', 'VersionManager');
         this.cleanupOldVersions(2);
         try {
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(versions));
@@ -89,7 +96,7 @@ export class VersionManager {
 
       // Validate the data structure
       if (!Array.isArray(parsed)) {
-        console.error('Invalid versions data structure, resetting');
+        logger.error('Invalid versions data structure, resetting', undefined, 'VersionManager');
         return [];
       }
 
@@ -102,7 +109,7 @@ export class VersionManager {
                typeof version.submissionDate === 'string';
       });
     } catch (error) {
-      console.error('Failed to load versions from localStorage:', error);
+      logger.error('Failed to load versions from localStorage', error as Error, 'VersionManager');
       // If corrupted, clear it
       try {
         localStorage.removeItem(this.STORAGE_KEY);
@@ -119,7 +126,7 @@ export class VersionManager {
         localStorage.removeItem(this.ACTIVE_FIX_KEY);
       }
     } catch (error) {
-      console.error('Failed to save active fix submission:', error);
+      logger.error('Failed to save active fix submission', error as Error, 'VersionManager');
     }
   }
 
@@ -132,21 +139,21 @@ export class VersionManager {
 
       // Validate the data structure
       if (!parsed || typeof parsed !== 'object') {
-        console.error('Invalid fix submission data structure');
+        logger.error('Invalid fix submission data structure', undefined, 'VersionManager');
         localStorage.removeItem(this.ACTIVE_FIX_KEY);
         return null;
       }
 
       // Basic validation
       if (!parsed.id || !parsed.version || !parsed.fixedCode) {
-        console.error('Invalid fix submission data, missing required fields');
+        logger.error('Invalid fix submission data, missing required fields', undefined, 'VersionManager');
         localStorage.removeItem(this.ACTIVE_FIX_KEY);
         return null;
       }
 
       return parsed;
     } catch (error) {
-      console.error('Failed to load active fix submission:', error);
+      logger.error('Failed to load active fix submission', error as Error, 'VersionManager');
       // If corrupted, clear it
       try {
         localStorage.removeItem(this.ACTIVE_FIX_KEY);
@@ -213,7 +220,7 @@ export class VersionManager {
       localStorage.removeItem(this.STORAGE_KEY);
       localStorage.removeItem(this.ACTIVE_FIX_KEY);
     } catch (error) {
-      console.error('Failed to clear version data:', error);
+      logger.error('Failed to clear version data', error as Error, 'VersionManager');
     }
   }
 

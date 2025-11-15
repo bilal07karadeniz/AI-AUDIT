@@ -8,6 +8,7 @@ import type {
 } from '../../types';
 import { DeterministicHasher } from '../hash';
 import { API_CONFIG } from '../../config/api';
+import { logger } from '../utils/logger';
 
 export class ClaudeAPI {
   private apiKey: string;
@@ -72,7 +73,7 @@ export class ClaudeAPI {
 
       return parsed;
     } catch (error) {
-      console.error('Claude API error:', error);
+      logger.error('Claude API analysis failed', error as Error, 'ClaudeAPI', { contractHash: analysis.hash });
       throw new Error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -178,7 +179,7 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         // If it's a 529 (overloaded) error and we have retries left, wait and retry
         if (response.status === 529 && attempt < retries) {
           const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff, max 10s
-          console.log(`API overloaded, retrying in ${waitTime}ms (attempt ${attempt}/${retries})`);
+          logger.info(`API overloaded, retrying in ${waitTime}ms`, 'ClaudeAPI', { attempt, retries, waitTime });
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
@@ -192,7 +193,7 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         }
         // Wait before retrying on network errors
         const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000);
-        console.log(`Network error, retrying in ${waitTime}ms (attempt ${attempt}/${retries})`);
+        logger.warn(`Network error, retrying in ${waitTime}ms`, 'ClaudeAPI', { attempt, retries, waitTime, error });
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -230,8 +231,9 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         score: Math.max(0, Math.min(100, parsed.score || 0))
       };
     } catch (error) {
-      console.error('Failed to parse Claude response:', error);
-      console.error('Raw response:', responseText);
+      logger.error('Failed to parse Claude response', error as Error, 'ClaudeAPI', {
+        responseText: responseText.substring(0, 500) // Log first 500 chars
+      });
       throw new Error('Failed to parse analysis results');
     }
   }
