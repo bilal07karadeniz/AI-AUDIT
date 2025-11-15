@@ -1,5 +1,6 @@
 import type { ContractVersion, FixSubmission, ContractAudit, FixVerificationProgress } from '../types';
 import { logger } from './utils/logger';
+import { perfMonitor } from './utils/performance';
 
 export class VersionManager {
   private static readonly STORAGE_KEY = 'ai_audit_versions';
@@ -51,6 +52,7 @@ export class VersionManager {
   }
 
   static saveVersions(versions: ContractVersion[]): void {
+    perfMonitor.start('versionManager:saveVersions', 'VersionManager');
     try {
       const data = JSON.stringify(versions);
       const dataSize = data.length;
@@ -70,7 +72,12 @@ export class VersionManager {
       }
 
       localStorage.setItem(this.STORAGE_KEY, data);
+      perfMonitor.end('versionManager:saveVersions', 'VersionManager', {
+        versionCount: versions.length,
+        dataSize
+      });
     } catch (error) {
+      perfMonitor.end('versionManager:saveVersions', 'VersionManager', { error: true });
       logger.error('Failed to save versions to localStorage', error as Error, 'VersionManager');
 
       // If quota exceeded, try cleanup and retry once
@@ -88,27 +95,38 @@ export class VersionManager {
   }
 
   static loadVersions(): ContractVersion[] {
+    perfMonitor.start('versionManager:loadVersions', 'VersionManager');
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (!stored) return [];
+      if (!stored) {
+        perfMonitor.end('versionManager:loadVersions', 'VersionManager', { empty: true });
+        return [];
+      }
 
       const parsed = JSON.parse(stored);
 
       // Validate the data structure
       if (!Array.isArray(parsed)) {
         logger.error('Invalid versions data structure, resetting', undefined, 'VersionManager');
+        perfMonitor.end('versionManager:loadVersions', 'VersionManager', { invalid: true });
         return [];
       }
 
       // Validate each version object
-      return parsed.filter((version: any) => {
+      const validVersions = parsed.filter((version: any) => {
         return version &&
                typeof version.version === 'string' &&
                typeof version.code === 'string' &&
                version.audit &&
                typeof version.submissionDate === 'string';
       });
+
+      perfMonitor.end('versionManager:loadVersions', 'VersionManager', {
+        versionCount: validVersions.length
+      });
+      return validVersions;
     } catch (error) {
+      perfMonitor.end('versionManager:loadVersions', 'VersionManager', { error: true });
       logger.error('Failed to load versions from localStorage', error as Error, 'VersionManager');
       // If corrupted, clear it
       try {

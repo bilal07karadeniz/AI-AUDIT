@@ -1,5 +1,6 @@
 import type { ContractAudit, CacheEntry } from '../../types';
 import { logger } from '../utils/logger';
+import { perfMonitor } from '../utils/performance';
 
 export class AuditCache {
   private cache: Map<string, CacheEntry> = new Map();
@@ -17,10 +18,12 @@ export class AuditCache {
   }
 
   public get(contractHash: string): ContractAudit | null {
+    perfMonitor.start('cache:get', 'AuditCache');
     const entry = this.cache.get(contractHash);
 
     if (!entry) {
       this.misses++;
+      perfMonitor.end('cache:get', 'AuditCache', { hit: false });
       return null;
     }
 
@@ -29,14 +32,17 @@ export class AuditCache {
       this.cache.delete(contractHash);
       this.saveToStorage();
       this.misses++;
+      perfMonitor.end('cache:get', 'AuditCache', { hit: false, expired: true });
       return null;
     }
 
     this.hits++;
+    perfMonitor.end('cache:get', 'AuditCache', { hit: true });
     return entry.result;
   }
 
   public set(contractHash: string, result: ContractAudit): void {
+    perfMonitor.start('cache:set', 'AuditCache');
     const now = new Date();
     const expiresAt = new Date(now.getTime() + this.ttl);
 
@@ -54,6 +60,7 @@ export class AuditCache {
 
     this.cache.set(contractHash, entry);
     this.saveToStorage();
+    perfMonitor.end('cache:set', 'AuditCache', { cacheSize: this.cache.size });
   }
 
   public has(contractHash: string): boolean {

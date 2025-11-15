@@ -9,6 +9,7 @@ import type {
 import { DeterministicHasher } from '../hash';
 import { API_CONFIG } from '../../config/api';
 import { logger } from '../utils/logger';
+import { perfMonitor } from '../utils/performance';
 
 export class ClaudeAPI {
   private apiKey: string;
@@ -27,6 +28,8 @@ export class ClaudeAPI {
     analysis: ContractAnalysis,
     onProgress?: (progress: AnalysisProgress) => void
   ): Promise<ClaudeResponse> {
+    perfMonitor.start('claude:analyzeContract', 'ClaudeAPI', { contractHash: analysis.hash });
+
     if (onProgress) {
       onProgress({
         stage: 'Preparing analysis',
@@ -71,8 +74,10 @@ export class ClaudeAPI {
         });
       }
 
+      perfMonitor.end('claude:analyzeContract', 'ClaudeAPI', { success: true });
       return parsed;
     } catch (error) {
+      perfMonitor.end('claude:analyzeContract', 'ClaudeAPI', { error: true });
       logger.error('Claude API analysis failed', error as Error, 'ClaudeAPI', { contractHash: analysis.hash });
       throw new Error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
