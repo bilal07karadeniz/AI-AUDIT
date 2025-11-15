@@ -191,11 +191,234 @@ app.post('/api/claude/messages', async (req: Request, res: Response) => {
   }
 });
 
+// API status and version info
+app.get('/api/status', (req: Request, res: Response) => {
+  res.json({
+    name: 'SolidAudit API',
+    version: '2.0.0',
+    status: 'operational',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    features: {
+      claudeAPI: true,
+      rateLimit: true,
+      cors: true,
+      validation: true
+    },
+    limits: {
+      rateLimit: {
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+        maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100')
+      },
+      requestBodySize: '10mb'
+    }
+  });
+});
+
+// Quick contract validation endpoint
+app.post('/api/validate', (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Request must include code as a string'
+      });
+    }
+
+    // Basic validation checks
+    const validation = {
+      hasCode: code.length > 0,
+      hasPragma: /pragma\s+solidity/.test(code),
+      hasContract: /\b(contract|library|interface)\s+\w+/.test(code),
+      estimatedSize: code.length,
+      withinSizeLimit: code.length < 24576, // 24KB
+      lineCount: code.split('\n').length,
+      characterCount: code.length
+    };
+
+    const issues: string[] = [];
+    const warnings: string[] = [];
+
+    if (!validation.hasPragma) {
+      warnings.push('No pragma directive found');
+    }
+
+    if (!validation.hasContract) {
+      issues.push('No contract, library, or interface declaration found');
+    }
+
+    if (!validation.withinSizeLimit) {
+      issues.push('Contract size exceeds 24KB deployment limit');
+    }
+
+    if (validation.lineCount > 1000) {
+      warnings.push('Contract is very large (>1000 lines)');
+    }
+
+    // Check for common issues
+    if (/tx\.origin/.test(code)) {
+      warnings.push('Uses tx.origin (consider using msg.sender)');
+    }
+
+    if (/\.call\{/.test(code) || /\.delegatecall\{/.test(code)) {
+      warnings.push('Uses low-level calls (ensure proper error handling)');
+    }
+
+    const result = {
+      isValid: issues.length === 0,
+      issues,
+      warnings,
+      metadata: {
+        lineCount: validation.lineCount,
+        characterCount: validation.characterCount,
+        estimatedSize: validation.estimatedSize,
+        withinSizeLimit: validation.withinSizeLimit
+      }
+    };
+
+    res.json(result);
+
+  } catch (error: any) {
+    console.error('❌ Validation error:', error);
+    res.status(500).json({
+      error: 'Validation error',
+      message: error.message || 'Failed to validate contract'
+    });
+  }
+});
+
+// System metrics endpoint
+app.get('/api/metrics', (req: Request, res: Response) => {
+  const memoryUsage = process.memoryUsage();
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    uptime: {
+      seconds: Math.floor(process.uptime()),
+      formatted: formatUptime(process.uptime())
+    },
+    memory: {
+      used: memoryUsage.heapUsed,
+      total: memoryUsage.heapTotal,
+      limit: memoryUsage.rss,
+      usedMB: (memoryUsage.heapUsed / 1024 / 1024).toFixed(2),
+      totalMB: (memoryUsage.heapTotal / 1024 / 1024).toFixed(2),
+      percentage: ((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100).toFixed(2)
+    },
+    process: {
+      pid: process.pid,
+      platform: process.platform,
+      nodeVersion: process.version,
+      arch: process.arch
+    },
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// API documentation endpoint
+app.get('/api/docs', (req: Request, res: Response) => {
+  res.json({
+    name: 'SolidAudit API',
+    version: '2.0.0',
+    description: 'Backend API for SolidAudit contract auditing platform',
+    endpoints: {
+      health: {
+        method: 'GET',
+        path: '/health',
+        description: 'Health check endpoint',
+        auth: false,
+        rateLimit: false
+      },
+      status: {
+        method: 'GET',
+        path: '/api/status',
+        description: 'Get API status and version information',
+        auth: false,
+        rateLimit: true
+      },
+      validate: {
+        method: 'POST',
+        path: '/api/validate',
+        description: 'Quick contract validation without full audit',
+        auth: false,
+        rateLimit: true,
+        body: {
+          code: 'string (required) - Solidity contract code'
+        }
+      },
+      claude: {
+        method: 'POST',
+        path: '/api/claude/messages',
+        description: 'Proxy to Claude API for contract analysis',
+        auth: false,
+        rateLimit: true,
+        body: {
+          model: 'string (required) - Claude model name',
+          max_tokens: 'number (optional) - Maximum tokens',
+          temperature: 'number (optional) - Temperature setting',
+          messages: 'array (required) - Messages array',
+          seed: 'number (optional) - Random seed for deterministic results'
+        }
+      },
+      metrics: {
+        method: 'GET',
+        path: '/api/metrics',
+        description: 'Get system metrics and performance data',
+        auth: false,
+        rateLimit: true
+      },
+      docs: {
+        method: 'GET',
+        path: '/api/docs',
+        description: 'API documentation (this endpoint)',
+        auth: false,
+        rateLimit: false
+      }
+    },
+    rateLimit: {
+      window: '15 minutes',
+      maxRequests: 100,
+      message: 'Rate limit: 100 requests per 15 minutes'
+    },
+    cors: {
+      enabled: true,
+      allowedOrigins: allowedOrigins
+    }
+  });
+});
+
+// Helper function to format uptime
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}
+
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     error: 'Not found',
-    message: `Route ${req.method} ${req.path} not found`
+    message: `Route ${req.method} ${req.path} not found`,
+    availableEndpoints: {
+      health: 'GET /health',
+      status: 'GET /api/status',
+      validate: 'POST /api/validate',
+      claude: 'POST /api/claude/messages',
+      metrics: 'GET /api/metrics',
+      docs: 'GET /api/docs'
+    }
   });
 });
 
