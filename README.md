@@ -4,12 +4,22 @@
 
 **Professional-grade smart contract security auditing powered by Claude AI**
 
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/bilal07karadeniz/AI-AUDIT/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.1-blue)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-7.1-purple)](https://vitejs.dev/)
 [![Node](https://img.shields.io/badge/Node-18+-green)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-4.18-green)](https://expressjs.com/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![Status](https://img.shields.io/badge/status-production--ready-brightgreen)](https://github.com/bilal07karadeniz/AI-AUDIT)
 
 Visit us at: **solidaudit.io**
+
+[Features](#-features) •
+[Quick Start](#-quick-start-automated) •
+[Documentation](#-documentation) •
+[API Reference](#backend-api-endpoints) •
+[Contributing](#-contributing)
 
 </div>
 
