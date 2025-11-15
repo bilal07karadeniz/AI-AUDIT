@@ -10,6 +10,8 @@ import { CodeNormalizer, DeterministicHasher } from '../hash';
 import { ClaudeAPI } from '../claude';
 import { AuditCache } from '../cache';
 import { SecurityValidator, InputValidator, generateSecurityHash } from '../security';
+import { ContractValidator } from '../utils/contractValidator';
+import { logger } from '../utils/logger';
 
 export class AuditEngine {
   private claudeAPI: ClaudeAPI;
@@ -243,7 +245,55 @@ export class AuditEngine {
       throw new Error(`Contract validation failed: ${validationResult.errors.join(', ')}`);
     }
 
-    // Perform security validation
+    // Comprehensive contract validation using ContractValidator
+    const contractValidation = ContractValidator.validateComplete(code);
+
+    logger.info('Contract validation results', 'AuditEngine', {
+      isValid: contractValidation.summary.isValid,
+      totalIssues: contractValidation.summary.totalIssues,
+      highSeverityIssues: contractValidation.summary.highSeverityIssues,
+      canDeploy: contractValidation.summary.canDeploy
+    });
+
+    // Log validation errors and warnings
+    if (contractValidation.validation.errors.length > 0) {
+      logger.warn('Contract validation errors detected', 'AuditEngine', {
+        errors: contractValidation.validation.errors.map(e => e.message)
+      });
+    }
+
+    if (contractValidation.validation.warnings.length > 0) {
+      logger.info('Contract validation warnings', 'AuditEngine', {
+        warnings: contractValidation.validation.warnings
+      });
+    }
+
+    // Check for critical validation errors
+    if (!contractValidation.validation.isValid) {
+      const errorMessages = contractValidation.validation.errors.map(e => e.message).join(', ');
+      throw new Error(`Contract has critical validation errors: ${errorMessages}`);
+    }
+
+    // Check for critical security issues from ContractValidator
+    const criticalSecurityIssues = contractValidation.securityChecks.filter(
+      check => check.severity === 'HIGH' && !check.passed
+    );
+
+    if (criticalSecurityIssues.length > 3) {
+      const issuesList = criticalSecurityIssues.flatMap(check => check.issues).join('; ');
+      logger.error('Too many critical security issues detected', undefined, 'AuditEngine', {
+        count: criticalSecurityIssues.length,
+        issues: issuesList
+      });
+      throw new Error(`Too many critical security issues detected (${criticalSecurityIssues.length}). Please address major vulnerabilities before analysis.`);
+    }
+
+    // Check contract size
+    if (!contractValidation.sizeCheck.withinLimit) {
+      throw new Error(contractValidation.sizeCheck.warning || 'Contract size exceeds deployment limit');
+    }
+
+    // Also perform existing security validation
     const securityValidation = SecurityValidator.validateContract(code);
 
     // Check for critical security issues that would prevent analysis
@@ -256,7 +306,7 @@ export class AuditEngine {
       onProgress({
         stage: 'Validation',
         progress: 8,
-        message: `Contract validation passed (${validationResult.contractType} detected)`
+        message: `Contract validation passed (${validationResult.contractType} detected, ${contractValidation.summary.totalIssues} issues found)`
       });
     }
   }
@@ -273,6 +323,26 @@ export class AuditEngine {
       ...securityValidation.suggestions
     ];
 
+    // Add ContractValidator security check results
+    const contractValidation = ContractValidator.validateComplete(analysis.normalizedCode);
+
+    // Add all security check issues as warnings
+    contractValidation.securityChecks.forEach(check => {
+      if (!check.passed && check.issues.length > 0) {
+        warnings.push(...check.issues.map(issue => `${check.severity}: ${issue}`));
+      }
+    });
+
+    // Add validation warnings
+    if (contractValidation.validation.warnings.length > 0) {
+      warnings.push(...contractValidation.validation.warnings);
+    }
+
+    // Add contract size warning if approaching limit
+    if (contractValidation.sizeCheck.warning) {
+      warnings.push(contractValidation.sizeCheck.warning);
+    }
+
     // Add complexity-based warnings
     if (analysis.functions.length > 50) {
       warnings.push('High function count - consider contract modularity');
@@ -288,6 +358,12 @@ export class AuditEngine {
       .map(check => `Non-compliant with ${check.standard}: ${check.description}`);
 
     warnings.push(...nonCompliantStandards);
+
+    logger.info('Pre-audit checks completed', 'AuditEngine', {
+      warningCount: warnings.length,
+      securityChecks: contractValidation.securityChecks.length,
+      validationWarnings: contractValidation.validation.warnings.length
+    });
 
     return warnings;
   }
