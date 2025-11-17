@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuditWorkflow } from './AuditWorkflow';
 import { Card, CardContent, Button } from '../ui';
 import { ReportGenerator } from '../../lib/reports';
@@ -19,7 +19,34 @@ interface AuditResultsProps {
 export function AuditResults({ audit, onIssueClick, originalCode, claudeApiKey, onNewVersionCreated }: AuditResultsProps) {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportType, setReportType] = useState<string | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  const [activeFixSubmission, setActiveFixSubmission] = useState<FixSubmission | null>(null);
+  const [showProgress, setShowProgress] = useState(false);
+  const [versions, setVersions] = useState<ContractVersion[]>([]);
   const { showToast } = useToast();
+
+  // Initialize versions and current version on component mount
+  useEffect(() => {
+    const loadedVersions = VersionManager.getAllVersions();
+    setVersions(loadedVersions);
+
+    if (loadedVersions.length === 0 && originalCode) {
+      // Create first version from original audit
+      const firstVersion = VersionManager.addVersion(originalCode, audit, 'Initial audit');
+      setVersions([firstVersion]);
+      setCurrentVersion(firstVersion.version);
+    } else if (loadedVersions.length > 0) {
+      // Set to the most recent version
+      setCurrentVersion(loadedVersions[loadedVersions.length - 1].version);
+    }
+
+    // Load any active fix submission
+    const activeSubmission = VersionManager.loadActiveFixSubmission();
+    if (activeSubmission) {
+      setActiveFixSubmission(activeSubmission);
+      setShowProgress(activeSubmission.status === 'analyzing');
+    }
+  }, [originalCode, audit]);
 
   const handleReportGeneration = async (type: 'pdf' | 'json' | 'html') => {
     setIsGeneratingReport(true);

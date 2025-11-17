@@ -7,6 +7,9 @@ import type {
   AnalysisProgress
 } from '../../types';
 import { DeterministicHasher } from '../hash';
+import { API_CONFIG } from '../../config/api';
+import { logger } from '../utils/logger';
+import { perfMonitor } from '../utils/performance';
 
 export class ClaudeAPI {
   private apiKey: string;
@@ -25,6 +28,8 @@ export class ClaudeAPI {
     analysis: ContractAnalysis,
     onProgress?: (progress: AnalysisProgress) => void
   ): Promise<ClaudeResponse> {
+    perfMonitor.start('claude:analyzeContract', 'ClaudeAPI', { contractHash: analysis.hash });
+
     if (onProgress) {
       onProgress({
         stage: 'Preparing analysis',
@@ -69,9 +74,11 @@ export class ClaudeAPI {
         });
       }
 
+      perfMonitor.end('claude:analyzeContract', 'ClaudeAPI', { success: true });
       return parsed;
     } catch (error) {
-      console.error('Claude API error:', error);
+      perfMonitor.end('claude:analyzeContract', 'ClaudeAPI', { error: true });
+      logger.error('Claude API analysis failed', error as Error, 'ClaudeAPI', { contractHash: analysis.hash });
       throw new Error(`Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -148,17 +155,16 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
   private async makeAPICall(prompt: string, config: ClaudeAPIConfig, retries = 3): Promise<any> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const response = await fetch('/api/claude/messages', {
+        const response = await fetch(API_CONFIG.getEndpoint('claude'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Key': this.apiKey,
-            'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
             model: config.model,
             max_tokens: config.max_tokens,
             temperature: config.temperature,
+            seed: config.seed,
             messages: [
               {
                 role: 'user',
@@ -178,7 +184,7 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         // If it's a 529 (overloaded) error and we have retries left, wait and retry
         if (response.status === 529 && attempt < retries) {
           const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff, max 10s
-          console.log(`API overloaded, retrying in ${waitTime}ms (attempt ${attempt}/${retries})`);
+          logger.info(`API overloaded, retrying in ${waitTime}ms`, 'ClaudeAPI', { attempt, retries, waitTime });
           await new Promise(resolve => setTimeout(resolve, waitTime));
           continue;
         }
@@ -192,7 +198,7 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         }
         // Wait before retrying on network errors
         const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000);
-        console.log(`Network error, retrying in ${waitTime}ms (attempt ${attempt}/${retries})`);
+        logger.warn(`Network error, retrying in ${waitTime}ms`, 'ClaudeAPI', { attempt, retries, waitTime, error });
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -230,8 +236,9 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
         score: Math.max(0, Math.min(100, parsed.score || 0))
       };
     } catch (error) {
-      console.error('Failed to parse Claude response:', error);
-      console.error('Raw response:', responseText);
+      logger.error('Failed to parse Claude response', error as Error, 'ClaudeAPI', {
+        responseText: responseText.substring(0, 500) // Log first 500 chars
+      });
       throw new Error('Failed to parse analysis results');
     }
   }
@@ -247,12 +254,10 @@ IMPORTANT: Respond with valid JSON only. No additional text or explanations.
 
   public async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch('/api/claude/messages', {
+      const response = await fetch(API_CONFIG.getEndpoint('claude'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
           model: 'claude-opus-4-1-20250805',

@@ -56,53 +56,6 @@ export class FixVerificationEngine {
   }
 
   /**
-   * Submit a fix for verification
-   */
-  public async submitFix(
-    version: string,
-    originalVersion: string,
-    fixedCode: string,
-    submissionNotes?: string,
-    onProgressUpdate?: (progress: FixVerificationProgress) => void
-  ): Promise<FixSubmission> {
-    const submissionId = DeterministicHasher.generateHash(`${version}-${Date.now()}`);
-    const startTime = new Date().toISOString();
-
-    const submission: FixSubmission = {
-      id: submissionId,
-      version,
-      originalVersion,
-      fixedCode,
-      submissionDate: startTime,
-      status: 'pending',
-      submissionNotes,
-      progress: {
-        stage: 'initializing',
-        progress: 0,
-        message: 'Initializing verification process...',
-        startTime
-      }
-    };
-
-    try {
-      const verificationResult = await this.verifyFix(
-        issue,
-        originalCode,
-        fixedCode,
-        onProgress
-      );
-
-      submission.verificationResult = verificationResult;
-      submission.status = this.determineSubmissionStatus(verificationResult);
-
-      return submission;
-    } catch (error) {
-      submission.status = 'rejected';
-      throw error;
-    }
-  }
-
-  /**
    * Build the verification prompt for Claude
    */
   private buildVerificationPrompt(
